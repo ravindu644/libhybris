@@ -734,35 +734,22 @@ void DrmWaylandBuffer::init(
         abort();
     }
 
-    for (int i = 0; i < nh->numFds; i++)
-        zwp_linux_buffer_params_v1_add(params, nh->data[i], i, 0, stride * 4, 0, 0);
-
-    size_t buffer_size = sizeof(int) * (4 + nh->numInts);
-    std::vector<int> buffer(4 + nh->numInts);
-
-    buffer[0] = -1;
-    buffer[1] = nh->version;
-    buffer[2] = nh->numFds;
-    buffer[3] = nh->numInts;
-
-    for (int i = 0; i < nh->numInts; i++)
-        buffer[4 + i] = nh->data[nh->numFds + i];
-
-    int meta_fd = memfd_create("lindroid-meta", MFD_CLOEXEC);
-    if (ftruncate(meta_fd, buffer_size) != 0) {
-        fprintf(stderr, "lindroid-drm: ftruncate failed\n");
-        close(meta_fd);
+    /* Standard linux-dmabuf: one plane, the handle's dma-buf. Lindroid's compositor
+     * took every handle fd plus a memfd describing the native_handle; KWin and other
+     * stock compositors reject that as an unknown multi-plane buffer. MediaTek gralloc
+     * puts a gralloc_extra metadata fd first, so pick the fd that reports a size big
+     * enough for the pixels (only a dma-buf answers lseek(SEEK_END)). */
+    int pixel_fd = -1;
+    for (int i = 0; i < nh->numFds && pixel_fd < 0; i++) {
+        off_t size = lseek(nh->data[i], 0, SEEK_END);
+        if (size >= (off_t)stride * 4 * height)
+            pixel_fd = nh->data[i];
+    }
+    if (pixel_fd < 0) {
+        fprintf(stderr, "hybris: no dma-buf among the %d fds of the gralloc handle\n", nh->numFds);
         abort();
     }
-
-    if (pwrite(meta_fd, buffer.data(), buffer_size, 0) != (ssize_t)buffer_size) {
-        fprintf(stderr, "lindroid-drm: failed to write data into meta_fd\n");
-        close(meta_fd);
-        abort();
-    }
-
-    zwp_linux_buffer_params_v1_add(params, meta_fd, nh->numFds, 0, 1, 0, 0);
-    close(meta_fd);
+    zwp_linux_buffer_params_v1_add(params, pixel_fd, 0, 0, stride * 4, 0, 0);
 
     uint32_t req_format = (format == HAL_PIXEL_FORMAT_RGBX_8888) ? GBM_FORMAT_XRGB8888 : GBM_FORMAT_ABGR8888;
     wlbuffer = zwp_linux_buffer_params_v1_create_immed(params, width, height, req_format, 0);

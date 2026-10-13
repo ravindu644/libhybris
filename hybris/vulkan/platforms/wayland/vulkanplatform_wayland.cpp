@@ -118,10 +118,11 @@ static void callback_done(void *data, wl_callback *cb, uint32_t d)
     WaylandDisplay *dpy = (WaylandDisplay *)data;
 
     wl_callback_destroy(cb);
-    if (!dpy->wlegl) {
-        fprintf(stderr, "Fatal: the server doesn't advertise the android_wlegl global!");
-        abort();
-    }
+    /* Compositors that never call eglBindWaylandDisplayWL (KWin 6, every
+     * Mesa-based one) have no android_wlegl. Windows then send their buffers
+     * through zwp_linux_dmabuf_v1 instead (DrmWaylandBuffer). */
+    if (!dpy->wlegl)
+        fprintf(stderr, "hybris: no android_wlegl, using zwp_linux_dmabuf_v1\n");
 }
 
 static const wl_callback_listener callback_listener = {
