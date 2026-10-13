@@ -529,6 +529,13 @@ WaylandNativeWindowBuffer *WaylandNativeWindow::addBuffer() {
 int WaylandNativeWindow::setBufferCount(int cnt) {
     TRACE("cnt:%d", cnt);
 
+    /* Buffers the compositor still holds don't count against the client's budget.
+     * Android's swapchain dequeues every image while it is being created; when a
+     * swapchain is recreated (a resize, the first configure) one image is still on
+     * screen, and the compositor only releases it after a newer commit that can
+     * never come, so vkCreateSwapchainKHR deadlocked in dequeueBuffer. */
+    cnt += (int)fronted.size();
+
     if ((int)m_bufList.size() == cnt)
         return NO_ERROR;
 
