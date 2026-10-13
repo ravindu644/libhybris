@@ -264,6 +264,10 @@ static const char * _defaultEglPlatform()
 	return egl_platform;
 }
 
+#ifndef EGL_PLATFORM_SURFACELESS_MESA
+#define EGL_PLATFORM_SURFACELESS_MESA 0x31DD
+#endif
+
 static EGLenum _getPlatformFromString(const char* hybris_ws)
 {
 	if (strcmp(hybris_ws, "null") == 0) {
@@ -303,6 +307,10 @@ EGLDisplay __eglHybrisGetPlatformDisplayCommon(EGLenum platform,
 			break;
 
 		case EGL_PLATFORM_ANDROID_KHR:
+		/* Surfaceless renders only into images and pbuffers, which is what
+		 * the null ws already does. KWin's headless backends (anland,
+		 * virtual) ask for it by this name. */
+		case EGL_PLATFORM_SURFACELESS_MESA:
 			// "null" ws passthrough everything, which essentially means
 			// the Android platform. Not to be confused with NULL (0) value.
 			hybris_ws = "null";
@@ -427,7 +435,7 @@ const char * eglQueryString(EGLDisplay dpy, EGLint name)
 		const char *ret = _eglQueryString(dpy, name);
 		static char eglextensionsbuf[2048];
 		snprintf(eglextensionsbuf, 2046, "%s %s", ret,
-			"EGL_EXT_client_extensions EGL_EXT_platform_wayland EGL_KHR_platform_wayland"
+			"EGL_EXT_client_extensions EGL_EXT_platform_wayland EGL_KHR_platform_wayland EGL_MESA_platform_surfaceless"
 		);
 		ret = eglextensionsbuf;
 		return ret;
