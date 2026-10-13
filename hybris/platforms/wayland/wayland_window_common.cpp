@@ -733,6 +733,23 @@ DrmWaylandBuffer::DrmWaylandBuffer(
     common.incRef(&common);
 }
 
+
+/* gralloc (HAL) format to DRM fourcc and bytes per pixel. Everything used to be sent as
+ * ABGR8888, so zink's 10-bit swapchains (EGL lists 10:10:10:2 configs first) came out
+ * with scrambled colours, and RGBX was labelled XRGB (red and blue swapped). */
+static uint32_t hal_to_drm_format(int hal, int *bpp)
+{
+    *bpp = 4;
+    switch (hal) {
+    case HAL_PIXEL_FORMAT_RGBX_8888: return GBM_FORMAT_XBGR8888;
+    case HAL_PIXEL_FORMAT_BGRA_8888: return GBM_FORMAT_ARGB8888;
+    case 0x2B /* HAL_PIXEL_FORMAT_RGBA_1010102 */: return GBM_FORMAT_ABGR2101010;
+    case HAL_PIXEL_FORMAT_RGB_565: *bpp = 2; return GBM_FORMAT_RGB565;
+    case 0x16 /* HAL_PIXEL_FORMAT_RGBA_FP16 */: *bpp = 8; return GBM_FORMAT_ABGR16161616F;
+    default: return GBM_FORMAT_ABGR8888;
+    }
+}
+
 void DrmWaylandBuffer::init(
     struct android_wlegl *android_wlegl,
     struct wl_display *display,
@@ -757,6 +774,8 @@ void DrmWaylandBuffer::init(
      * MediaTek gralloc also carries a gralloc_extra fd (no size) and a small metadata
      * dma-buf, which beats a "big enough" test on tiny buffers such as vkcube's first
      * 1x1 one. Only dma-bufs answer lseek(SEEK_END), and the pixels are the largest. */
+    int bpp;
+    uint32_t req_format = hal_to_drm_format(format, &bpp);
     int pixel_fd = -1;
     off_t best = 0;
     for (int i = 0; i < nh->numFds; i++) {
@@ -766,13 +785,12 @@ void DrmWaylandBuffer::init(
             pixel_fd = nh->data[i];
         }
     }
-    if (pixel_fd < 0 || best < (off_t)stride * 4 * height) {
+    if (pixel_fd < 0 || best < (off_t)stride * bpp * height) {
         fprintf(stderr, "hybris: no pixel dma-buf among the %d fds of the gralloc handle\n", nh->numFds);
         abort();
     }
-    zwp_linux_buffer_params_v1_add(params, pixel_fd, 0, 0, stride * 4, 0, 0);
+    zwp_linux_buffer_params_v1_add(params, pixel_fd, 0, 0, stride * bpp, 0, 0);
 
-    uint32_t req_format = (format == HAL_PIXEL_FORMAT_RGBX_8888) ? GBM_FORMAT_XRGB8888 : GBM_FORMAT_ABGR8888;
     wlbuffer = zwp_linux_buffer_params_v1_create_immed(params, width, height, req_format, 0);
     zwp_linux_buffer_params_v1_destroy(params);
     wl_proxy_set_queue(reinterpret_cast<struct wl_proxy*>(wlbuffer), queue);
