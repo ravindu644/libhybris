@@ -737,19 +737,23 @@ void DrmWaylandBuffer::init(
         abort();
     }
 
-    /* Standard linux-dmabuf: one plane, the handle's dma-buf. Lindroid's compositor
-     * took every handle fd plus a memfd describing the native_handle; KWin and other
-     * stock compositors reject that as an unknown multi-plane buffer. MediaTek gralloc
-     * puts a gralloc_extra metadata fd first, so pick the fd that reports a size big
-     * enough for the pixels (only a dma-buf answers lseek(SEEK_END)). */
+    /* Standard linux-dmabuf: one plane, the handle's pixel dma-buf. Lindroid's
+     * compositor took every handle fd plus a memfd describing the native_handle; KWin
+     * and other stock compositors reject that as an unknown multi-plane buffer.
+     * MediaTek gralloc also carries a gralloc_extra fd (no size) and a small metadata
+     * dma-buf, which beats a "big enough" test on tiny buffers such as vkcube's first
+     * 1x1 one. Only dma-bufs answer lseek(SEEK_END), and the pixels are the largest. */
     int pixel_fd = -1;
-    for (int i = 0; i < nh->numFds && pixel_fd < 0; i++) {
+    off_t best = 0;
+    for (int i = 0; i < nh->numFds; i++) {
         off_t size = lseek(nh->data[i], 0, SEEK_END);
-        if (size >= (off_t)stride * 4 * height)
+        if (size > best) {
+            best = size;
             pixel_fd = nh->data[i];
+        }
     }
-    if (pixel_fd < 0) {
-        fprintf(stderr, "hybris: no dma-buf among the %d fds of the gralloc handle\n", nh->numFds);
+    if (pixel_fd < 0 || best < (off_t)stride * 4 * height) {
+        fprintf(stderr, "hybris: no pixel dma-buf among the %d fds of the gralloc handle\n", nh->numFds);
         abort();
     }
     zwp_linux_buffer_params_v1_add(params, pixel_fd, 0, 0, stride * 4, 0, 0);
