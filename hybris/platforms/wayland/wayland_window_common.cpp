@@ -717,7 +717,14 @@ DrmWaylandBuffer::DrmWaylandBuffer(
     format = _format;
     usage = _usage;
 
-    int ret = hybris_gralloc_allocate(width, height, format, (uint32_t)usage, &handle, (uint32_t*)&stride);
+    /* init() tells the compositor DRM_FORMAT_MOD_LINEAR. For GPU render+texture
+     * usage, gralloc is free to pick a compressed (AFBC) or tiled layout, which the
+     * compositor then reads as noise. CPU access rules those layouts out.
+     * ponytail: linear costs bandwidth; pass the real modifier from the gralloc4
+     * metadata instead if throughput matters. */
+    int ret = hybris_gralloc_allocate(width, height, format,
+                                      (uint32_t)usage | GRALLOC_USAGE_SW_READ_RARELY,
+                                      &handle, (uint32_t*)&stride);
     if (ret != 0) {
         fprintf(stderr, "lindroid-drm: failed to allocate gralloc buffer: %d\n", ret);
         abort();
