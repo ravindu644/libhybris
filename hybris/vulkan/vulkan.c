@@ -181,6 +181,9 @@ PFN_vkVoidFunction vkGetInstanceProcAddr(VkInstance instance, const char* pName)
     return (*_vkGetInstanceProcAddr)(instance, pName);
 }
 
+static PFN_vkCreateSwapchainKHR hybris_real_create_swapchain;
+VkResult vkCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateInfoKHR *pCreateInfo, const VkAllocationCallbacks *pAllocator, VkSwapchainKHR *pSwapchain);
+
 PFN_vkVoidFunction vkGetDeviceProcAddr(VkDevice device, const char *pName)
 {
     static PFN_vkGetDeviceProcAddr real;
@@ -506,8 +509,6 @@ VkResult vkGetPhysicalDeviceSurfaceCapabilitiesKHR(VkPhysicalDevice physicalDevi
 }
 VULKAN_IDLOAD(vkGetPhysicalDeviceSurfaceFormatsKHR);
 VULKAN_IDLOAD(vkGetPhysicalDeviceSurfacePresentModesKHR);
-static PFN_vkCreateSwapchainKHR hybris_real_create_swapchain;
-
 VkResult vkCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateInfoKHR *pCreateInfo, const VkAllocationCallbacks *pAllocator, VkSwapchainKHR *pSwapchain)
 {
     if (!hybris_real_create_swapchain)
