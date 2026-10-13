@@ -439,6 +439,19 @@ static int _hybris_hook_pthread_setspecific(pthread_key_t key, const void *ptr)
     return pthread_setspecific(key, ptr);
 }
 
+/* glibc hands out key 0 to the first caller, but the getspecific hook below
+ * treats 0 as never created, the way bionic does. A blob whose key happens to
+ * be the first in the process (Mali osup, in a bare EGL client) then loses its
+ * thread state on every call. Park key 0 so no Android code can be given it. */
+static int _hybris_hook_pthread_key_create(pthread_key_t *key, void (*destructor)(void *))
+{
+    int ret = pthread_key_create(key, destructor);
+
+    if (ret == 0 && *key == 0)
+        ret = pthread_key_create(key, destructor);
+    return ret;
+}
+
 static void* _hybris_hook_pthread_getspecific(pthread_key_t key)
 {
     TRACE_HOOK("key %d", key);
@@ -3032,7 +3045,7 @@ static struct _hook hooks_common[] = {
     HOOK_DIRECT_NO_DEBUG(pthread_getname_np),
     HOOK_INDIRECT(pthread_setname_np),
     HOOK_DIRECT_NO_DEBUG(pthread_once),
-    HOOK_DIRECT_NO_DEBUG(pthread_key_create),
+    HOOK_INDIRECT(pthread_key_create),
     HOOK_DIRECT(pthread_setspecific),
     HOOK_INDIRECT(pthread_getspecific),
     HOOK_INDIRECT(pthread_attr_init),
