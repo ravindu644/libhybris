@@ -34,7 +34,8 @@ static HYBRIS_IMPLEMENT_FUNCTION0(nullui, EGLNativeWindowType, android_createDis
 
 static void nullws_init_module(struct ws_egl_interface *egl_iface)
 {
-        hybris_gralloc_initialize(0);
+	/* null has no windows to back, and devices with only gralloc4 HIDL have no
+	 * legacy module to open, so leave gralloc to the window platforms */
 	eglplatformcommon_init(egl_iface);
 }
 
