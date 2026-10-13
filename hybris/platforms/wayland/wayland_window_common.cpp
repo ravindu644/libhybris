@@ -217,15 +217,18 @@ WaylandNativeWindow::WaylandNativeWindow(struct wl_egl_window *window,
     m_freeBufs = 0;
     m_damage_rects = NULL;
     m_damage_n_rects = 0;
-    WaylandNativeWindow::setBufferCount(3);
 #ifdef WANT_LINDROID_DRM
-    if(!m_android_wlegl) {
-        if (!display) return;
+    /* Bind linux-dmabuf before the first buffers exist: setBufferCount() creates
+     * DrmWaylandBuffers that copy wl_dmabuf, and an unbound (uninitialised) pointer
+     * crashed the first present. */
+    this->wl_dmabuf = nullptr;
+    if(!m_android_wlegl && display) {
         struct wl_registry *registry = wl_display_get_registry(display);
         wl_registry_add_listener(registry, &registry_listener, &this->wl_dmabuf);
         wl_display_roundtrip(display);
     }
 #endif // WANT_LINDROID_DRM
+    WaylandNativeWindow::setBufferCount(3);
     HYBRIS_TRACE_END("wayland-platform", "create_window", "");
 }
 
