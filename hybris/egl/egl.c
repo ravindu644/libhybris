@@ -600,15 +600,36 @@ EGLDisplay eglGetCurrentDisplay(void)
 	return (*_eglGetCurrentDisplay)();
 }
 
+/* Android's own libEGL never offers these, but a vendor driver loaded directly
+ * (LIBEGL=libGLES_mali.so) may. Compositors such as KWin only accept linux-dmabuf
+ * client buffers whose format and modifier these queries report, so an empty answer
+ * rejects every client. Ask the window system first, then the driver. */
+static void *driver_proc(const char *name)
+{
+	HYBRIS_DLSYSM(egl, &_eglGetProcAddress, "eglGetProcAddress");
+	return _eglGetProcAddress ? (void *)(*_eglGetProcAddress)(name) : NULL;
+}
+
 EGLBoolean eglQueryDmaBufFormatsEXT(EGLDisplay dpy, EGLint max_formats, EGLint *formats, EGLint *num_formats)
 {
-	// Underlying android EGL NEVER provides this functionaltiy, so its upo to the ws
-	return ws_queryDmaBufFormatsEXT(dpy, max_formats, formats, num_formats);
+	static PFNEGLQUERYDMABUFFORMATSEXTPROC real;
+
+	if (ws_queryDmaBufFormatsEXT(dpy, max_formats, formats, num_formats))
+		return EGL_TRUE;
+	if (!real)
+		real = (PFNEGLQUERYDMABUFFORMATSEXTPROC)driver_proc("eglQueryDmaBufFormatsEXT");
+	return real ? real(hybris_egl_get_real_display(dpy), max_formats, formats, num_formats) : EGL_FALSE;
 }
 
 EGLBoolean eglQueryDmaBufModifiersEXT(EGLDisplay dpy, EGLint format, EGLint max_modifiers, EGLuint64KHR *modifiers, EGLBoolean *external_only, EGLint *num_modifiers)
 {
-	return ws_queryDmaBufModifiersEXT(dpy, format, max_modifiers, modifiers, external_only, num_modifiers);
+	static PFNEGLQUERYDMABUFMODIFIERSEXTPROC real;
+
+	if (ws_queryDmaBufModifiersEXT(dpy, format, max_modifiers, modifiers, external_only, num_modifiers))
+		return EGL_TRUE;
+	if (!real)
+		real = (PFNEGLQUERYDMABUFMODIFIERSEXTPROC)driver_proc("eglQueryDmaBufModifiersEXT");
+	return real ? real(hybris_egl_get_real_display(dpy), format, max_modifiers, modifiers, external_only, num_modifiers) : EGL_FALSE;
 }
 
 EGLBoolean _my_eglSwapBuffersWithDamageEXT(EGLDisplay dpy, EGLSurface surface, EGLint *rects, EGLint n_rects)
