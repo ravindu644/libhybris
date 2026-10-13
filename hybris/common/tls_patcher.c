@@ -27,6 +27,10 @@ extern void* _hybris_hook___get_tls_hooks(void);
 /* Architecture-specific patch function */
 extern void hybris_patch_tls_arch(void* segment_addr, size_t segment_size, int tls_offset);
 
+#ifdef __aarch64__
+#include "tls_patcher_bionic_aarch64.c"
+#endif
+
 /* Calculate offset from thread pointer to our TLS area */
 static int hybris_calculate_tls_offset(void) {
     void* tp = __builtin_thread_pointer();
@@ -81,6 +85,12 @@ static int should_patch_library(const char* library_name) {
 }
 
 void hybris_patch_tls(void* segment_addr, size_t segment_size, const char* library_name) {
+#ifdef __aarch64__
+    if (is_bionic(get_basename(library_name))) {
+        hybris_patch_bionic_tp(segment_addr, segment_size, get_basename(library_name));
+        return;
+    }
+#endif
     if (!should_patch_library(library_name)) {
         return;
     }

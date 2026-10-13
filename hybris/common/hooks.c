@@ -3645,8 +3645,8 @@ static void __hybris_linker_init()
 
     hybris_tls_patcher_t tls_patcher = NULL;
 #ifdef __aarch64__
-    if (getenv("HYBRIS_PATCH_TLS") != NULL)
-        tls_patcher = hybris_patch_tls;
+    /* always on: stock bionic needs its TCB reads redirected, see tls_patcher_bionic_aarch64.c */
+    tls_patcher = hybris_patch_tls;
 #endif
 
     /* Now its time to setup the linker itself */
