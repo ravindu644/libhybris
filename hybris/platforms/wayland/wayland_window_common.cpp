@@ -302,6 +302,8 @@ void WaylandNativeWindow::releaseBuffer(struct wl_buffer *buffer)
     WaylandNativeWindowBuffer* wnb = *it;
     fronted.erase(it);
     HYBRIS_TRACE_COUNTER("wayland-platform", "fronted.size", "%lu", fronted.size());
+    if (reapOrphan(wnb))
+        return;
 
     for (it = m_bufList.begin(); it != m_bufList.end(); ++it)
     {
@@ -374,6 +376,10 @@ int WaylandNativeWindow::cancelBuffer(BaseNativeWindowBuffer* buffer, int fenceF
 
     lock();
     HYBRIS_TRACE_BEGIN("wayland-platform", "cancelBuffer", "-%p", wnb);
+    if (reapOrphan(wnb)) {
+        unlock();
+        return 0;
+    }
 
     /* Check first that it really is our buffer */
     for (it = m_bufList.begin(); it != m_bufList.end(); ++it)
@@ -505,7 +511,46 @@ void WaylandNativeWindow::destroyBuffers()
         destroyBuffer(*it);
     }
     m_bufList.clear();
+    for (it = m_orphans.begin(); it != m_orphans.end(); ++it)
+        destroyBuffer(*it);
+    m_orphans.clear();
     m_freeBufs = 0;
+}
+
+/* Android's swapchain disconnects and reconnects the window before it dequeues a
+ * new swapchain's images, and BufferQueue orphans every buffer on disconnect. We
+ * kept them, so a buffer the compositor released after a recreate came back from
+ * dequeueBuffer, the swapchain didn't know it ("dequeueBuffer returned unrecognized
+ * buffer"), returned OUT_OF_DATE, and Zink recreated it forever: plasmashell's
+ * launcher popup spun a driver thread at 100% and froze the whole shell. */
+void WaylandNativeWindow::apiDisconnect()
+{
+    lock();
+    std::list<WaylandNativeWindowBuffer*>::iterator it = m_bufList.begin();
+    for (; it != m_bufList.end(); ++it) {
+        if ((*it)->busy)
+            m_orphans.push_back(*it);
+        else
+            destroyBuffer(*it);
+    }
+    m_bufList.clear();
+    m_freeBufs = 0;
+    unlock();
+}
+
+/* Frees a buffer orphaned by apiDisconnect() once the client or compositor lets go */
+bool WaylandNativeWindow::reapOrphan(WaylandNativeWindowBuffer *wnb)
+{
+    std::list<WaylandNativeWindowBuffer*>::iterator it = m_orphans.begin();
+    for (; it != m_orphans.end(); ++it) {
+        if (*it == wnb) {
+            m_orphans.erase(it);
+            ++m_freeBufs; /* destroyBuffer() assumes it was a free buffer */
+            destroyBuffer(wnb);
+            return true;
+        }
+    }
+    return false;
 }
 
 WaylandNativeWindowBuffer *WaylandNativeWindow::addBuffer() {

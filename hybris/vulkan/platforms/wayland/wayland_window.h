@@ -80,6 +80,7 @@ protected:
     virtual int setBuffersFormat(int format);
     virtual int setBuffersDimensions(int width, int height);
     virtual int setBufferCount(int cnt);
+    virtual void apiDisconnect();
 
 private:
     WaylandNativeWindowBuffer *addBuffer();
@@ -90,6 +91,9 @@ private:
 
     std::list<WaylandNativeWindowBuffer *> m_bufList;
     std::list<WaylandNativeWindowBuffer *> fronted;
+    /* Buffers from before the last disconnect that are still dequeued or on screen */
+    std::list<WaylandNativeWindowBuffer *> m_orphans;
+    bool reapOrphan(WaylandNativeWindowBuffer *wnb);
     struct wl_egl_window *m_window;
     struct wl_display *m_display;
     int m_width;
