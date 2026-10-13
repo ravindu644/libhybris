@@ -52,6 +52,7 @@ struct WaylandDisplay {
     android_wlegl *wlegl;
     WaylandNativeWindow *window;
     wl_display *wl_dpy_wrapper;
+    bool synced;
 };
 
 static bool init_done = false;
@@ -118,6 +119,7 @@ static void callback_done(void *data, wl_callback *cb, uint32_t d)
     WaylandDisplay *dpy = (WaylandDisplay *)data;
 
     wl_callback_destroy(cb);
+    dpy->synced = true;
     /* Compositors that never call eglBindWaylandDisplayWL (KWin 6, every
      * Mesa-based one) have no android_wlegl. Windows then send their buffers
      * through zwp_linux_dmabuf_v1 instead (DrmWaylandBuffer). */
@@ -133,11 +135,12 @@ void freeWaylandDisplay(WaylandDisplay *wdpy)
 {
     int ret = 0;
     // We still have the sync callback on flight, wait for it to arrive
-    while (ret == 0 && !wdpy->wlegl) {
+    while (ret >= 0 && !wdpy->synced) {
         ret = wl_display_dispatch_queue(wdpy->wl_dpy, wdpy->queue);
     }
     assert(ret >= 0);
-    android_wlegl_destroy(wdpy->wlegl);
+    if (wdpy->wlegl)
+        android_wlegl_destroy(wdpy->wlegl);
     wl_registry_destroy(wdpy->registry);
     wl_proxy_wrapper_destroy(wdpy->wl_dpy_wrapper);
     wl_event_queue_destroy(wdpy->queue);
@@ -222,6 +225,7 @@ static VkResult waylandws_vkCreateWaylandSurfaceKHR(VkInstance instance,
 
     wdpy->wl_dpy = pCreateInfo->display;
     wdpy->wlegl = NULL;
+    wdpy->synced = false;
     wdpy->queue = wl_display_create_queue(wdpy->wl_dpy);
     wdpy->wl_dpy_wrapper = (struct wl_display *) wl_proxy_create_wrapper(wdpy->wl_dpy);
     wl_proxy_set_queue((struct wl_proxy *) wdpy->wl_dpy_wrapper, wdpy->queue);
@@ -232,7 +236,7 @@ static VkResult waylandws_vkCreateWaylandSurfaceKHR(VkInstance instance,
     wl_callback_add_listener(cb, &callback_listener, wdpy);
 
     ret = 0;
-    while (ret == 0 && !wdpy->wlegl) {
+    while (ret >= 0 && !wdpy->synced) {
         ret = wl_display_dispatch_queue(wdpy->wl_dpy, wdpy->queue);
     }
     assert(ret >= 0);
