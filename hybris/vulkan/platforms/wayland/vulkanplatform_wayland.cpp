@@ -288,6 +288,12 @@ static void waylandws_vkDestroySurfaceKHR(VkInstance instance, VkSurfaceKHR surf
     }
 }
 
+extern "C" int hybris_wayland_swap_rb;
+extern "C" void waylandws_set_swap_rb(int swap)
+{
+    hybris_wayland_swap_rb = swap;
+}
+
 extern "C" void waylandws_vkSetInstanceProcAddrFunc(PFN_vkVoidFunction addr)
 {
     if (_vkGetInstanceProcAddr == NULL)

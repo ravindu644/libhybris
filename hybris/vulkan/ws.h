@@ -52,4 +52,5 @@ VkBool32 ws_vkGetPhysicalDeviceWaylandPresentationSupportKHR(VkPhysicalDevice ph
 void ws_vkDestroySurfaceKHR(VkInstance instance, VkSurfaceKHR surface, const VkAllocationCallbacks* pAllocator);
 #endif
 void ws_vkSetInstanceProcAddrFunc(PFN_vkVoidFunction addr);
+void ws_set_swap_rb(int swap);
 #endif

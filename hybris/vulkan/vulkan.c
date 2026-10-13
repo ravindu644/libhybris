@@ -181,7 +181,18 @@ PFN_vkVoidFunction vkGetInstanceProcAddr(VkInstance instance, const char* pName)
     return (*_vkGetInstanceProcAddr)(instance, pName);
 }
 
-VULKAN_IDLOAD(vkGetDeviceProcAddr);
+PFN_vkVoidFunction vkGetDeviceProcAddr(VkDevice device, const char *pName)
+{
+    static PFN_vkGetDeviceProcAddr real;
+
+    if (!real)
+        real = (PFN_vkGetDeviceProcAddr)_android_vulkan_dlsym("vkGetDeviceProcAddr");
+    if (!strcmp(pName, "vkCreateSwapchainKHR")) {
+        hybris_real_create_swapchain = (PFN_vkCreateSwapchainKHR)real(device, pName);
+        return (PFN_vkVoidFunction)vkCreateSwapchainKHR;
+    }
+    return real(device, pName);
+}
 VULKAN_IDLOAD(vkCreateDevice);
 VULKAN_IDLOAD(vkDestroyDevice);
 /* Debug knob for bisecting driver bugs from a layer-less stack (Khronos layers can't sit
@@ -495,7 +506,16 @@ VkResult vkGetPhysicalDeviceSurfaceCapabilitiesKHR(VkPhysicalDevice physicalDevi
 }
 VULKAN_IDLOAD(vkGetPhysicalDeviceSurfaceFormatsKHR);
 VULKAN_IDLOAD(vkGetPhysicalDeviceSurfacePresentModesKHR);
-VULKAN_IDLOAD(vkCreateSwapchainKHR);
+static PFN_vkCreateSwapchainKHR hybris_real_create_swapchain;
+
+VkResult vkCreateSwapchainKHR(VkDevice device, const VkSwapchainCreateInfoKHR *pCreateInfo, const VkAllocationCallbacks *pAllocator, VkSwapchainKHR *pSwapchain)
+{
+    if (!hybris_real_create_swapchain)
+        hybris_real_create_swapchain = (PFN_vkCreateSwapchainKHR)_android_vulkan_dlsym("vkCreateSwapchainKHR");
+    ws_set_swap_rb(pCreateInfo->imageFormat == VK_FORMAT_B8G8R8A8_UNORM ||
+                   pCreateInfo->imageFormat == VK_FORMAT_B8G8R8A8_SRGB);
+    return hybris_real_create_swapchain(device, pCreateInfo, pAllocator, pSwapchain);
+}
 VULKAN_IDLOAD(vkDestroySwapchainKHR);
 VULKAN_IDLOAD(vkGetSwapchainImagesKHR);
 VULKAN_IDLOAD(vkAcquireNextImageKHR);

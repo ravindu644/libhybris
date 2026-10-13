@@ -23,6 +23,7 @@
 #include <sys/auxv.h>
 
 static struct ws_module *ws = NULL;
+static void *ws_handle = NULL;
 
 static void _init_ws()
 {
@@ -49,6 +50,7 @@ static void _init_ws()
             fprintf(stderr, "ERROR: %s\n\t%s\n", ws_name, dlerror());
             assert(0);
         }
+        ws_handle = wsmod;
         ws = dlsym(wsmod, "ws_module_info");
         assert(ws != NULL);
         ws->init_module(&hybris_vulkan_interface);
@@ -89,6 +91,18 @@ void ws_vkDestroySurfaceKHR(VkInstance instance, VkSurfaceKHR surface, const VkA
     ws->vkDestroySurfaceKHR(instance, surface, pAllocator);
 }
 #endif
+
+/* Optional: only the Wayland platform exports it (no ws_module slot, so other platforms
+ * and older plugins keep working). */
+void ws_set_swap_rb(int swap)
+{
+    void (*set)(int);
+
+    _init_ws();
+    set = (void (*)(int))dlsym(ws_handle, "waylandws_set_swap_rb");
+    if (set)
+        set(swap);
+}
 
 void ws_vkSetInstanceProcAddrFunc(PFN_vkVoidFunction addr)
 {

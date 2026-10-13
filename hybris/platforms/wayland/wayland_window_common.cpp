@@ -737,6 +737,13 @@ DrmWaylandBuffer::DrmWaylandBuffer(
 /* gralloc (HAL) format to DRM fourcc and bytes per pixel. Everything used to be sent as
  * ABGR8888, so zink's 10-bit swapchains (EGL lists 10:10:10:2 configs first) came out
  * with scrambled colours, and RGBX was labelled XRGB (red and blue swapped). */
+/* Set by the Vulkan platform when a swapchain uses B8G8R8A8. Android's swapchain code
+ * knows no BGRA, so it allocates RGBA gralloc buffers, but the driver still writes BGRA
+ * bytes for that VkFormat; label the dma-buf to match (zink's kopper always asks for
+ * B8G8R8A8, which showed red and blue swapped).
+ * ponytail: process-wide, one swapchain format per app; per-surface if that changes. */
+extern "C" { int hybris_wayland_swap_rb = 0; }
+
 static uint32_t hal_to_drm_format(int hal, int *bpp)
 {
     *bpp = 4;
@@ -776,6 +783,10 @@ void DrmWaylandBuffer::init(
      * 1x1 one. Only dma-bufs answer lseek(SEEK_END), and the pixels are the largest. */
     int bpp;
     uint32_t req_format = hal_to_drm_format(format, &bpp);
+    if (hybris_wayland_swap_rb && req_format == GBM_FORMAT_ABGR8888)
+        req_format = GBM_FORMAT_ARGB8888;
+    else if (hybris_wayland_swap_rb && req_format == GBM_FORMAT_XBGR8888)
+        req_format = GBM_FORMAT_XRGB8888;
     int pixel_fd = -1;
     off_t best = 0;
     for (int i = 0; i < nh->numFds; i++) {
