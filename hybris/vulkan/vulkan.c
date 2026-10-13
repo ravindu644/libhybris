@@ -139,6 +139,8 @@ PFN_vkVoidFunction vkGetInstanceProcAddr(VkInstance instance, const char* pName)
         return (PFN_vkVoidFunction)vkCreateInstance;
     } else if (!strcmp(pName, "vkGetInstanceProcAddr")) {
         return (PFN_vkVoidFunction)vkGetInstanceProcAddr;
+    } else if (!strcmp(pName, "vkGetPhysicalDeviceSurfaceCapabilitiesKHR")) {
+        return (PFN_vkVoidFunction)vkGetPhysicalDeviceSurfaceCapabilitiesKHR;
 #ifdef WANT_WAYLAND
     } else if (!strcmp(pName, "vkCreateWaylandSurfaceKHR")) {
         return (PFN_vkVoidFunction)vkCreateWaylandSurfaceKHR;
@@ -359,7 +361,23 @@ VULKAN_IDLOAD(vkGetDeviceImageMemoryRequirements);
 VULKAN_IDLOAD(vkGetDeviceImageSparseMemoryRequirements);
 #endif
 VULKAN_IDLOAD(vkGetPhysicalDeviceSurfaceSupportKHR);
-VULKAN_IDLOAD(vkGetPhysicalDeviceSurfaceCapabilitiesKHR);
+/* The Wayland platform creates every window at a 1x1 placeholder, and Android's
+ * WSI reports the window's size as the surface's fixed currentExtent, so clients
+ * built 1x1 swapchains that compositors then left unmapped. On Wayland the client
+ * picks the size: report the "any size" extent, and the swapchain's size reaches
+ * the window through native_window_set_buffers_dimensions(). */
+VkResult vkGetPhysicalDeviceSurfaceCapabilitiesKHR(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, VkSurfaceCapabilitiesKHR *caps)
+{
+    static PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR real;
+    VkResult ret;
+
+    if (!real)
+        real = (PFN_vkGetPhysicalDeviceSurfaceCapabilitiesKHR)_android_vulkan_dlsym("vkGetPhysicalDeviceSurfaceCapabilitiesKHR");
+    ret = real(physicalDevice, surface, caps);
+    if (ret == VK_SUCCESS && caps->currentExtent.width == 1 && caps->currentExtent.height == 1)
+        caps->currentExtent.width = caps->currentExtent.height = 0xFFFFFFFF;
+    return ret;
+}
 VULKAN_IDLOAD(vkGetPhysicalDeviceSurfaceFormatsKHR);
 VULKAN_IDLOAD(vkGetPhysicalDeviceSurfacePresentModesKHR);
 VULKAN_IDLOAD(vkCreateSwapchainKHR);
