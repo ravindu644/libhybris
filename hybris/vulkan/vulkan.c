@@ -26,6 +26,8 @@
 #include <dlfcn.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
+#include <sys/sysmacros.h>
 
 #include <hybris/common/binding.h>
 #include <hybris/common/floating_point_abi.h>
@@ -139,6 +141,9 @@ PFN_vkVoidFunction vkGetInstanceProcAddr(VkInstance instance, const char* pName)
         return (PFN_vkVoidFunction)vkCreateInstance;
     } else if (!strcmp(pName, "vkGetInstanceProcAddr")) {
         return (PFN_vkVoidFunction)vkGetInstanceProcAddr;
+    } else if (!strcmp(pName, "vkGetPhysicalDeviceProperties2") ||
+               !strcmp(pName, "vkGetPhysicalDeviceProperties2KHR")) {
+        return (PFN_vkVoidFunction)vkGetPhysicalDeviceProperties2;
     } else if (!strcmp(pName, "vkGetPhysicalDeviceSurfaceCapabilitiesKHR")) {
         return (PFN_vkVoidFunction)vkGetPhysicalDeviceSurfaceCapabilitiesKHR;
 #ifdef WANT_WAYLAND
@@ -291,7 +296,42 @@ VULKAN_IDLOAD(vkGetImageMemoryRequirements2);
 VULKAN_IDLOAD(vkGetBufferMemoryRequirements2);
 VULKAN_IDLOAD(vkGetImageSparseMemoryRequirements2);
 VULKAN_IDLOAD(vkGetPhysicalDeviceFeatures2);
-VULKAN_IDLOAD(vkGetPhysicalDeviceProperties2);
+/* An Android driver has no DRM device, so it leaves VkPhysicalDeviceDrmPropertiesEXT
+ * zeroed. Mesa's zink picks its Vulkan device by matching those numbers against the
+ * DRM fd the compositor advertised, so on a phone with only a display node it never
+ * found one, and fell back to copying every frame through wl_shm. HYBRIS_VK_DRM_NODE
+ * names the node to report (e.g. /dev/dri/card0); unset, nothing changes. */
+static void hybris_fill_drm_props(VkPhysicalDeviceProperties2 *props)
+{
+    static int have = -1;
+    static struct stat node;
+    const char *path;
+
+    if (have < 0) {
+        path = getenv("HYBRIS_VK_DRM_NODE");
+        have = path && stat(path, &node) == 0 && S_ISCHR(node.st_mode);
+    }
+    if (!have)
+        return;
+    for (VkBaseOutStructure *p = (VkBaseOutStructure *)props->pNext; p; p = p->pNext) {
+        if (p->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRM_PROPERTIES_EXT) {
+            VkPhysicalDeviceDrmPropertiesEXT *drm = (VkPhysicalDeviceDrmPropertiesEXT *)p;
+            drm->hasPrimary = drm->hasRender = VK_TRUE;
+            drm->primaryMajor = drm->renderMajor = major(node.st_rdev);
+            drm->primaryMinor = drm->renderMinor = minor(node.st_rdev);
+        }
+    }
+}
+
+void vkGetPhysicalDeviceProperties2(VkPhysicalDevice physicalDevice, VkPhysicalDeviceProperties2 *props)
+{
+    static PFN_vkGetPhysicalDeviceProperties2 real;
+
+    if (!real)
+        real = (PFN_vkGetPhysicalDeviceProperties2)_android_vulkan_dlsym("vkGetPhysicalDeviceProperties2");
+    real(physicalDevice, props);
+    hybris_fill_drm_props(props);
+}
 VULKAN_IDLOAD(vkGetPhysicalDeviceFormatProperties2);
 VULKAN_IDLOAD(vkGetPhysicalDeviceImageFormatProperties2);
 VULKAN_IDLOAD(vkGetPhysicalDeviceQueueFamilyProperties2);
