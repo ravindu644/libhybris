@@ -43,6 +43,10 @@
 #include <wayland-client.h>
 #include "linux-dmabuf-unstable-v1-client-protocol.h"
 #include <sys/mman.h>
+#include <sys/vfs.h>
+#ifndef DMA_BUF_MAGIC
+#define DMA_BUF_MAGIC 0x444d4142 /* linux/magic.h, not in every header set */
+#endif
 #include <vector>
 #endif // WANT_LINDROID_DRM
 
@@ -832,9 +836,9 @@ void DrmWaylandBuffer::init(
     /* Standard linux-dmabuf: one plane, the handle's pixel dma-buf. Lindroid's
      * compositor took every handle fd plus a memfd describing the native_handle; KWin
      * and other stock compositors reject that as an unknown multi-plane buffer.
-     * MediaTek gralloc also carries a gralloc_extra fd (no size) and a small metadata
-     * dma-buf, which beats a "big enough" test on tiny buffers such as vkcube's first
-     * 1x1 one. Only dma-bufs answer lseek(SEEK_END), and the pixels are the largest. */
+     * MediaTek gralloc also carries a gralloc_extra fd and a gralloc_shared_memory memfd
+     * of about 4.4 KiB, which outsizes the pixels of any buffer up to a page (Firefox's
+     * first 1x1 window). So only dma-bufs count, and the pixels are the largest. */
     int bpp;
     uint32_t req_format = hal_to_drm_format(format, &bpp);
     if (hybris_wayland_swap_rb && req_format == GBM_FORMAT_ABGR8888)
@@ -844,6 +848,9 @@ void DrmWaylandBuffer::init(
     int pixel_fd = -1;
     off_t best = 0;
     for (int i = 0; i < nh->numFds; i++) {
+        struct statfs fs;
+        if (fstatfs(nh->data[i], &fs) || fs.f_type != DMA_BUF_MAGIC)
+            continue;
         off_t size = lseek(nh->data[i], 0, SEEK_END);
         if (size > best) {
             best = size;
